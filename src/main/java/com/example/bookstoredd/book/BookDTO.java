@@ -2,11 +2,10 @@ package com.example.bookstoredd.book;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 
 @Schema(description = "Book Data Transfer Object")
 public record BookDTO(
-    @Schema(description = "Book ID", example = "1") @NotNull(message = "ID is mandatory") Long id,
+    @Schema(description = "Book ID", example = "1") Long id,
     @Schema(description = "Book title", example = "The Great Gatsby")
         @NotBlank(message = "Title is mandatory")
         String title,

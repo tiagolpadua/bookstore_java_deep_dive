@@ -1,0 +1,230 @@
+package com.example.bookstoredd.book;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureWebMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
+
+@SpringBootTest
+@AutoConfigureWebMvc
+@ActiveProfiles("test")
+@Transactional
+@DisplayName("Book Integration Tests")
+class BookIntegrationTest {
+
+  @Autowired private MockMvc mockMvc;
+
+  @Autowired private BookRepository bookRepository;
+
+  @Autowired private ObjectMapper objectMapper;
+
+  @BeforeEach
+  void setUp() {
+    bookRepository.deleteAll();
+  }
+
+  @Test
+  @DisplayName("Complete CRUD operations flow")
+  void completeCrudFlow_ShouldWorkCorrectly() throws Exception {
+    // Create a book
+    BookDTO newBook = new BookDTO(null, "Test Book", "Test Author");
+    String bookJson = objectMapper.writeValueAsString(newBook);
+
+    String createdBookResponse =
+        mockMvc
+            .perform(post("/api/books").contentType(MediaType.APPLICATION_JSON).content(bookJson))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.title").value("Test Book"))
+            .andExpect(jsonPath("$.author").value("Test Author"))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+    BookDTO createdBook = objectMapper.readValue(createdBookResponse, BookDTO.class);
+    Long bookId = createdBook.id();
+
+    // Get the created book
+    mockMvc
+        .perform(get("/api/books/{id}", bookId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value(bookId))
+        .andExpect(jsonPath("$.title").value("Test Book"))
+        .andExpect(jsonPath("$.author").value("Test Author"));
+
+    // Update the book
+    BookDTO updatedBook = new BookDTO(null, "Updated Book", "Updated Author");
+    String updatedBookJson = objectMapper.writeValueAsString(updatedBook);
+
+    mockMvc
+        .perform(
+            put("/api/books/{id}", bookId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updatedBookJson))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value(bookId))
+        .andExpect(jsonPath("$.title").value("Updated Book"))
+        .andExpect(jsonPath("$.author").value("Updated Author"));
+
+    // Verify the update
+    mockMvc
+        .perform(get("/api/books/{id}", bookId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.title").value("Updated Book"))
+        .andExpect(jsonPath("$.author").value("Updated Author"));
+
+    // Delete the book
+    mockMvc.perform(delete("/api/books/{id}", bookId)).andExpect(status().isNoContent());
+
+    // Verify deletion
+    mockMvc.perform(get("/api/books/{id}", bookId)).andExpect(status().isNotFound());
+  }
+
+  @Test
+  @DisplayName("Search functionality should work correctly")
+  void searchFunctionality_ShouldWorkCorrectly() throws Exception {
+    // Create test books
+    BookDTO book1 = new BookDTO(null, "Spring Boot Guide", "John Doe");
+    BookDTO book2 = new BookDTO(null, "Clean Code", "Robert Martin");
+    BookDTO book3 = new BookDTO(null, "Spring Security", "John Smith");
+
+    mockMvc
+        .perform(
+            post("/api/books")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(book1)))
+        .andExpect(status().isCreated());
+
+    mockMvc
+        .perform(
+            post("/api/books")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(book2)))
+        .andExpect(status().isCreated());
+
+    mockMvc
+        .perform(
+            post("/api/books")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(book3)))
+        .andExpect(status().isCreated());
+
+    // Search by title
+    mockMvc
+        .perform(get("/api/books/search").param("title", "Spring"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").isArray())
+        .andExpect(jsonPath("$.length()").value(2));
+
+    // Search by author
+    mockMvc
+        .perform(get("/api/books/search").param("author", "John"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").isArray())
+        .andExpect(jsonPath("$.length()").value(2));
+
+    // Search with no results
+    mockMvc
+        .perform(get("/api/books/search").param("title", "NonExistent"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").isArray())
+        .andExpect(jsonPath("$.length()").value(0));
+  }
+
+  @Test
+  @DisplayName("Exception handling should work correctly")
+  void exceptionHandling_ShouldWorkCorrectly() throws Exception {
+    // Test 404 for non-existent book
+    mockMvc
+        .perform(get("/api/books/999"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.status").value(404))
+        .andExpect(jsonPath("$.error").value("Not Found"))
+        .andExpect(jsonPath("$.message").value("Book not found with ID: 999"));
+
+    // Test validation error
+    BookDTO invalidBook = new BookDTO(null, "", ""); // Empty title and author
+    mockMvc
+        .perform(
+            post("/api/books")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(invalidBook)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.status").value(400))
+        .andExpect(jsonPath("$.error").value("Bad Request"))
+        .andExpect(jsonPath("$.message").value("Validation failed"));
+
+    // Test type mismatch
+    mockMvc
+        .perform(get("/api/books/invalid-id"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.status").value(400))
+        .andExpect(jsonPath("$.error").value("Bad Request"));
+  }
+
+  @Test
+  @DisplayName("Repository integration should work correctly")
+  void repositoryIntegration_ShouldWorkCorrectly() {
+    // Given
+    Book book1 = new Book();
+    book1.setTitle("Test Book 1");
+    book1.setAuthor("Author 1");
+
+    Book book2 = new Book();
+    book2.setTitle("Test Book 2");
+    book2.setAuthor("Author 2");
+
+    // When
+    Book savedBook1 = bookRepository.save(book1);
+    Book savedBook2 = bookRepository.save(book2);
+
+    // Then
+    assertNotNull(savedBook1.getId());
+    assertNotNull(savedBook2.getId());
+    assertEquals(2, bookRepository.count());
+
+    // Test custom queries
+    assertEquals(2, bookRepository.findAllOrderedById().size());
+    assertEquals(1, bookRepository.findByTitleContainingIgnoreCase("Book 1").size());
+    assertEquals(1, bookRepository.findByAuthorContainingIgnoreCase("Author 1").size());
+  }
+
+  @Test
+  @DisplayName("Service layer integration should work correctly")
+  void serviceLayerIntegration_ShouldWorkCorrectly() throws Exception {
+    // Create a book through the API
+    BookDTO newBook = new BookDTO(null, "Service Test Book", "Service Author");
+    String bookJson = objectMapper.writeValueAsString(newBook);
+
+    String response =
+        mockMvc
+            .perform(post("/api/books").contentType(MediaType.APPLICATION_JSON).content(bookJson))
+            .andExpect(status().isCreated())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+    BookDTO createdBook = objectMapper.readValue(response, BookDTO.class);
+
+    // Verify the book exists in the database
+    assertTrue(bookRepository.existsById(createdBook.id()));
+
+    // Verify we can retrieve all books
+    mockMvc
+        .perform(get("/api/books"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").isArray())
+        .andExpect(jsonPath("$.length()").value(1))
+        .andExpect(jsonPath("$[0].title").value("Service Test Book"));
+  }
+}

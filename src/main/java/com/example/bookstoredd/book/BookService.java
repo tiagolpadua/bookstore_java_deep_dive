@@ -48,6 +48,14 @@ public class BookService {
   public Book createBook(Book book) {
     log.debug("Creating new book: {}", book.getTitle());
 
+    // Trim whitespace from title and author if they are not null
+    if (book.getTitle() != null) {
+      book.setTitle(book.getTitle().trim());
+    }
+    if (book.getAuthor() != null) {
+      book.setAuthor(book.getAuthor().trim());
+    }
+
     // Verificar se o livro já existe por ID
     if (book.getId() != null && bookRepository.existsById(book.getId())) {
       log.warn("Book with ID {} already exists", book.getId());
@@ -70,8 +78,8 @@ public class BookService {
                   return new BookNotFoundException(id);
                 });
 
-    existingBook.setTitle(book.getTitle().trim());
-    existingBook.setAuthor(book.getAuthor().trim());
+    existingBook.setTitle(book.getTitle() != null ? book.getTitle().trim() : null);
+    existingBook.setAuthor(book.getAuthor() != null ? book.getAuthor().trim() : null);
 
     Book updatedBook = bookRepository.save(existingBook);
     log.info(BOOK_UPDATED_MSG, updatedBook.getTitle());

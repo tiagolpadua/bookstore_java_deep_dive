@@ -1,0 +1,262 @@
+package com.example.bookstoredd.book;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+
+@DataJpaTest
+@DisplayName("Book Repository Tests")
+class BookRepositoryTest {
+
+  @Autowired private TestEntityManager entityManager;
+
+  @Autowired private BookRepository bookRepository;
+
+  private Book book1;
+  private Book book2;
+  private Book book3;
+
+  @BeforeEach
+  void setUp() {
+    book1 = new Book();
+    book1.setTitle("Spring Boot in Action");
+    book1.setAuthor("Craig Walls");
+
+    book2 = new Book();
+    book2.setTitle("Clean Code");
+    book2.setAuthor("Robert C. Martin");
+
+    book3 = new Book();
+    book3.setTitle("Spring Security in Action");
+    book3.setAuthor("Laurentiu Spilca");
+
+    entityManager.persistAndFlush(book1);
+    entityManager.persistAndFlush(book2);
+    entityManager.persistAndFlush(book3);
+  }
+
+  @Test
+  @DisplayName("Should find all books ordered by ID")
+  void findAllOrderedById_ShouldReturnAllBooksOrderedById() {
+    // When
+    List<Book> books = bookRepository.findAllOrderedById();
+
+    // Then
+    assertEquals(3, books.size());
+    assertEquals(book1.getId(), books.get(0).getId());
+    assertEquals(book2.getId(), books.get(1).getId());
+    assertEquals(book3.getId(), books.get(2).getId());
+  }
+
+  @Test
+  @DisplayName("Should find books by title containing text (case-insensitive)")
+  void findByTitleContainingIgnoreCase_ShouldReturnMatchingBooks() {
+    // When
+    List<Book> books = bookRepository.findByTitleContainingIgnoreCase("spring");
+
+    // Then
+    assertEquals(2, books.size());
+    assertTrue(books.stream().anyMatch(book -> book.getTitle().equals("Spring Boot in Action")));
+    assertTrue(
+        books.stream().anyMatch(book -> book.getTitle().equals("Spring Security in Action")));
+  }
+
+  @Test
+  @DisplayName("Should find books by title containing text (exact case)")
+  void findByTitleContainingIgnoreCase_WithExactCase_ShouldReturnMatchingBooks() {
+    // When
+    List<Book> books = bookRepository.findByTitleContainingIgnoreCase("Spring");
+
+    // Then
+    assertEquals(2, books.size());
+    assertTrue(books.stream().anyMatch(book -> book.getTitle().equals("Spring Boot in Action")));
+    assertTrue(
+        books.stream().anyMatch(book -> book.getTitle().equals("Spring Security in Action")));
+  }
+
+  @Test
+  @DisplayName("Should find books by partial title")
+  void findByTitleContainingIgnoreCase_WithPartialTitle_ShouldReturnMatchingBooks() {
+    // When
+    List<Book> books = bookRepository.findByTitleContainingIgnoreCase("Boot");
+
+    // Then
+    assertEquals(1, books.size());
+    assertEquals("Spring Boot in Action", books.get(0).getTitle());
+  }
+
+  @Test
+  @DisplayName("Should return empty list when no books match title")
+  void findByTitleContainingIgnoreCase_WhenNoMatch_ShouldReturnEmptyList() {
+    // When
+    List<Book> books = bookRepository.findByTitleContainingIgnoreCase("NonExistentTitle");
+
+    // Then
+    assertTrue(books.isEmpty());
+  }
+
+  @Test
+  @DisplayName("Should find books by author containing text (case-insensitive)")
+  void findByAuthorContainingIgnoreCase_ShouldReturnMatchingBooks() {
+    // When
+    List<Book> books = bookRepository.findByAuthorContainingIgnoreCase("craig");
+
+    // Then
+    assertEquals(1, books.size());
+    assertEquals("Craig Walls", books.get(0).getAuthor());
+    assertEquals("Spring Boot in Action", books.get(0).getTitle());
+  }
+
+  @Test
+  @DisplayName("Should find books by author containing text (exact case)")
+  void findByAuthorContainingIgnoreCase_WithExactCase_ShouldReturnMatchingBooks() {
+    // When
+    List<Book> books = bookRepository.findByAuthorContainingIgnoreCase("Craig");
+
+    // Then
+    assertEquals(1, books.size());
+    assertEquals("Craig Walls", books.get(0).getAuthor());
+  }
+
+  @Test
+  @DisplayName("Should find books by partial author name")
+  void findByAuthorContainingIgnoreCase_WithPartialAuthor_ShouldReturnMatchingBooks() {
+    // When
+    List<Book> books = bookRepository.findByAuthorContainingIgnoreCase("Martin");
+
+    // Then
+    assertEquals(1, books.size());
+    assertEquals("Robert C. Martin", books.get(0).getAuthor());
+    assertEquals("Clean Code", books.get(0).getTitle());
+  }
+
+  @Test
+  @DisplayName("Should return empty list when no books match author")
+  void findByAuthorContainingIgnoreCase_WhenNoMatch_ShouldReturnEmptyList() {
+    // When
+    List<Book> books = bookRepository.findByAuthorContainingIgnoreCase("NonExistentAuthor");
+
+    // Then
+    assertTrue(books.isEmpty());
+  }
+
+  @Test
+  @DisplayName("Should return books ordered by ID in title search")
+  void findByTitleContainingIgnoreCase_ShouldReturnBooksOrderedById() {
+    // When
+    List<Book> books = bookRepository.findByTitleContainingIgnoreCase("spring");
+
+    // Then
+    assertEquals(2, books.size());
+    assertTrue(books.get(0).getId() < books.get(1).getId());
+  }
+
+  @Test
+  @DisplayName("Should return books ordered by ID in author search")
+  void findByAuthorContainingIgnoreCase_ShouldReturnBooksOrderedById() {
+    // Given - Create two books with the same author
+    Book book4 = new Book();
+    book4.setTitle("Another Craig Book");
+    book4.setAuthor("Craig Walls");
+    entityManager.persistAndFlush(book4);
+
+    // When
+    List<Book> books = bookRepository.findByAuthorContainingIgnoreCase("Craig");
+
+    // Then
+    assertEquals(2, books.size());
+    assertTrue(books.get(0).getId() < books.get(1).getId());
+  }
+
+  @Test
+  @DisplayName("Should save and find book by ID")
+  void saveAndFindById_ShouldWorkCorrectly() {
+    // Given
+    Book newBook = new Book();
+    newBook.setTitle("New Book");
+    newBook.setAuthor("New Author");
+
+    // When
+    Book savedBook = bookRepository.save(newBook);
+    Optional<Book> foundBook = bookRepository.findById(savedBook.getId());
+
+    // Then
+    assertTrue(foundBook.isPresent());
+    assertEquals("New Book", foundBook.get().getTitle());
+    assertEquals("New Author", foundBook.get().getAuthor());
+  }
+
+  @Test
+  @DisplayName("Should delete book by ID")
+  void deleteById_ShouldDeleteBook() {
+    // Given
+    Long bookId = book1.getId();
+
+    // When
+    bookRepository.deleteById(bookId);
+    Optional<Book> foundBook = bookRepository.findById(bookId);
+
+    // Then
+    assertFalse(foundBook.isPresent());
+  }
+
+  @Test
+  @DisplayName("Should count books correctly")
+  void count_ShouldReturnCorrectCount() {
+    // When
+    long count = bookRepository.count();
+
+    // Then
+    assertEquals(3, count);
+  }
+
+  @Test
+  @DisplayName("Should check if book exists by ID")
+  void existsById_ShouldReturnCorrectValue() {
+    // When
+    boolean exists = bookRepository.existsById(book1.getId());
+    boolean notExists = bookRepository.existsById(999L);
+
+    // Then
+    assertTrue(exists);
+    assertFalse(notExists);
+  }
+
+  @Test
+  @DisplayName("Should delete all books")
+  void deleteAll_ShouldDeleteAllBooks() {
+    // When
+    bookRepository.deleteAll();
+    long count = bookRepository.count();
+
+    // Then
+    assertEquals(0, count);
+  }
+
+  @Test
+  @DisplayName("Should handle empty search queries")
+  void findByTitleContainingIgnoreCase_WithEmptyString_ShouldReturnAllBooks() {
+    // When
+    List<Book> books = bookRepository.findByTitleContainingIgnoreCase("");
+
+    // Then
+    assertEquals(3, books.size());
+  }
+
+  @Test
+  @DisplayName("Should handle empty author search queries")
+  void findByAuthorContainingIgnoreCase_WithEmptyString_ShouldReturnAllBooks() {
+    // When
+    List<Book> books = bookRepository.findByAuthorContainingIgnoreCase("");
+
+    // Then
+    assertEquals(3, books.size());
+  }
+}

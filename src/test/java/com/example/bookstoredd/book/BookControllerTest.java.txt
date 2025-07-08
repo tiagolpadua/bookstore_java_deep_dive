@@ -1,0 +1,370 @@
+package com.example.bookstoredd.book;
+
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+import com.example.bookstoredd.book.exception.BookAlreadyExistsException;
+import com.example.bookstoredd.book.exception.BookNotFoundException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Arrays;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+
+@WebMvcTest(BookController.class)
+@DisplayName("Book Controller Tests")
+class BookControllerTest {
+
+  @Autowired private MockMvc mockMvc;
+
+  @MockBean private BookService bookService;
+
+  @Autowired private ObjectMapper objectMapper;
+
+  private Book book1;
+  private Book book2;
+
+  @BeforeEach
+  void setUp() {
+    book1 = new Book();
+    book1.setId(1L);
+    book1.setTitle("Spring Boot in Action");
+    book1.setAuthor("Craig Walls");
+
+    book2 = new Book();
+    book2.setId(2L);
+    book2.setTitle("Clean Code");
+    book2.setAuthor("Robert C. Martin");
+  }
+
+  @Test
+  @DisplayName("GET /api/books - Should return all books")
+  void getAllBooks_ShouldReturnAllBooks() throws Exception {
+    // Given
+    List<Book> books = Arrays.asList(book1, book2);
+    when(bookService.getAllBooks()).thenReturn(books);
+
+    // When & Then
+    mockMvc
+        .perform(get("/api/books"))
+        .andExpect(status().isOk())
+        .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$").isArray())
+        .andExpect(jsonPath("$.length()").value(2))
+        .andExpect(jsonPath("$[0].id").value(1))
+        .andExpect(jsonPath("$[0].title").value("Spring Boot in Action"))
+        .andExpect(jsonPath("$[0].author").value("Craig Walls"))
+        .andExpect(jsonPath("$[1].id").value(2))
+        .andExpect(jsonPath("$[1].title").value("Clean Code"))
+        .andExpect(jsonPath("$[1].author").value("Robert C. Martin"));
+
+    verify(bookService).getAllBooks();
+  }
+
+  @Test
+  @DisplayName("GET /api/books/{id} - Should return book by id")
+  void getBookById_WhenBookExists_ShouldReturnBook() throws Exception {
+    // Given
+    Long bookId = 1L;
+    when(bookService.getBookById(bookId)).thenReturn(book1);
+
+    // When & Then
+    mockMvc
+        .perform(get("/api/books/{id}", bookId))
+        .andExpect(status().isOk())
+        .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$.id").value(1))
+        .andExpect(jsonPath("$.title").value("Spring Boot in Action"))
+        .andExpect(jsonPath("$.author").value("Craig Walls"));
+
+    verify(bookService).getBookById(bookId);
+  }
+
+  @Test
+  @DisplayName("GET /api/books/{id} - Should return 404 when book not found")
+  void getBookById_WhenBookNotFound_ShouldReturn404() throws Exception {
+    // Given
+    Long bookId = 999L;
+    when(bookService.getBookById(bookId)).thenThrow(new BookNotFoundException(bookId));
+
+    // When & Then
+    mockMvc.perform(get("/api/books/{id}", bookId)).andExpect(status().isNotFound());
+
+    verify(bookService).getBookById(bookId);
+  }
+
+  @Test
+  @DisplayName("POST /api/books - Should create new book")
+  void createBook_WhenValidBook_ShouldCreateBook() throws Exception {
+    // Given
+    BookDTO newBookDTO = new BookDTO(null, "New Book", "New Author");
+    Book savedBook = new Book();
+    savedBook.setId(3L);
+    savedBook.setTitle("New Book");
+    savedBook.setAuthor("New Author");
+
+    when(bookService.createBook(any(Book.class))).thenReturn(savedBook);
+
+    // When & Then
+    mockMvc
+        .perform(
+            post("/api/books")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(newBookDTO)))
+        .andExpect(status().isCreated())
+        .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$.id").value(3))
+        .andExpect(jsonPath("$.title").value("New Book"))
+        .andExpect(jsonPath("$.author").value("New Author"));
+
+    verify(bookService).createBook(any(Book.class));
+  }
+
+  @Test
+  @DisplayName("POST /api/books - Should return 400 when title is blank")
+  void createBook_WhenTitleIsBlank_ShouldReturn400() throws Exception {
+    // Given
+    BookDTO invalidBookDTO = new BookDTO(null, "", "Author");
+
+    // When & Then
+    mockMvc
+        .perform(
+            post("/api/books")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(invalidBookDTO)))
+        .andExpect(status().isBadRequest());
+
+    verify(bookService, never()).createBook(any(Book.class));
+  }
+
+  @Test
+  @DisplayName("POST /api/books - Should return 400 when author is blank")
+  void createBook_WhenAuthorIsBlank_ShouldReturn400() throws Exception {
+    // Given
+    BookDTO invalidBookDTO = new BookDTO(null, "Title", "");
+
+    // When & Then
+    mockMvc
+        .perform(
+            post("/api/books")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(invalidBookDTO)))
+        .andExpect(status().isBadRequest());
+
+    verify(bookService, never()).createBook(any(Book.class));
+  }
+
+  @Test
+  @DisplayName("POST /api/books - Should return 409 when book already exists")
+  void createBook_WhenBookAlreadyExists_ShouldReturn409() throws Exception {
+    // Given
+    BookDTO existingBookDTO = new BookDTO(1L, "Existing Book", "Existing Author");
+
+    when(bookService.createBook(any(Book.class))).thenThrow(new BookAlreadyExistsException(1L));
+
+    // When & Then
+    mockMvc
+        .perform(
+            post("/api/books")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(existingBookDTO)))
+        .andExpect(status().isConflict());
+
+    verify(bookService).createBook(any(Book.class));
+  }
+
+  @Test
+  @DisplayName("PUT /api/books/{id} - Should update existing book")
+  void updateBook_WhenValidBook_ShouldUpdateBook() throws Exception {
+    // Given
+    Long bookId = 1L;
+    BookDTO updateBookDTO = new BookDTO(null, "Updated Title", "Updated Author");
+    Book updatedBook = new Book();
+    updatedBook.setId(bookId);
+    updatedBook.setTitle("Updated Title");
+    updatedBook.setAuthor("Updated Author");
+
+    when(bookService.updateBook(eq(bookId), any(Book.class))).thenReturn(updatedBook);
+
+    // When & Then
+    mockMvc
+        .perform(
+            put("/api/books/{id}", bookId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(updateBookDTO)))
+        .andExpect(status().isOk())
+        .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$.id").value(1))
+        .andExpect(jsonPath("$.title").value("Updated Title"))
+        .andExpect(jsonPath("$.author").value("Updated Author"));
+
+    verify(bookService).updateBook(eq(bookId), any(Book.class));
+  }
+
+  @Test
+  @DisplayName("PUT /api/books/{id} - Should return 404 when book not found")
+  void updateBook_WhenBookNotFound_ShouldReturn404() throws Exception {
+    // Given
+    Long bookId = 999L;
+    BookDTO updateBookDTO = new BookDTO(null, "Updated Title", "Updated Author");
+
+    when(bookService.updateBook(eq(bookId), any(Book.class)))
+        .thenThrow(new BookNotFoundException(bookId));
+
+    // When & Then
+    mockMvc
+        .perform(
+            put("/api/books/{id}", bookId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(updateBookDTO)))
+        .andExpect(status().isNotFound());
+
+    verify(bookService).updateBook(eq(bookId), any(Book.class));
+  }
+
+  @Test
+  @DisplayName("DELETE /api/books/{id} - Should delete book")
+  void deleteBook_WhenBookExists_ShouldDeleteBook() throws Exception {
+    // Given
+    Long bookId = 1L;
+    doNothing().when(bookService).deleteBook(bookId);
+
+    // When & Then
+    mockMvc.perform(delete("/api/books/{id}", bookId)).andExpect(status().isNoContent());
+
+    verify(bookService).deleteBook(bookId);
+  }
+
+  @Test
+  @DisplayName("DELETE /api/books/{id} - Should return 404 when book not found")
+  void deleteBook_WhenBookNotFound_ShouldReturn404() throws Exception {
+    // Given
+    Long bookId = 999L;
+    doThrow(new BookNotFoundException(bookId)).when(bookService).deleteBook(bookId);
+
+    // When & Then
+    mockMvc.perform(delete("/api/books/{id}", bookId)).andExpect(status().isNotFound());
+
+    verify(bookService).deleteBook(bookId);
+  }
+
+  @Test
+  @DisplayName("DELETE /api/books - Should delete all books")
+  void deleteAllBooks_ShouldDeleteAllBooks() throws Exception {
+    // Given
+    doNothing().when(bookService).deleteAllBooks();
+
+    // When & Then
+    mockMvc.perform(delete("/api/books")).andExpect(status().isNoContent());
+
+    verify(bookService).deleteAllBooks();
+  }
+
+  @Test
+  @DisplayName("GET /api/books/search - Should search books by title")
+  void searchBooks_WhenSearchByTitle_ShouldReturnMatchingBooks() throws Exception {
+    // Given
+    String searchTitle = "Spring";
+    List<Book> books = Arrays.asList(book1);
+    when(bookService.searchBooksByTitle(searchTitle)).thenReturn(books);
+
+    // When & Then
+    mockMvc
+        .perform(get("/api/books/search").param("title", searchTitle))
+        .andExpect(status().isOk())
+        .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$").isArray())
+        .andExpect(jsonPath("$.length()").value(1))
+        .andExpect(jsonPath("$[0].id").value(1))
+        .andExpect(jsonPath("$[0].title").value("Spring Boot in Action"))
+        .andExpect(jsonPath("$[0].author").value("Craig Walls"));
+
+    verify(bookService).searchBooksByTitle(searchTitle);
+  }
+
+  @Test
+  @DisplayName("GET /api/books/search - Should search books by author")
+  void searchBooks_WhenSearchByAuthor_ShouldReturnMatchingBooks() throws Exception {
+    // Given
+    String searchAuthor = "Craig";
+    List<Book> books = Arrays.asList(book1);
+    when(bookService.searchBooksByAuthor(searchAuthor)).thenReturn(books);
+
+    // When & Then
+    mockMvc
+        .perform(get("/api/books/search").param("author", searchAuthor))
+        .andExpect(status().isOk())
+        .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(jsonPath("$").isArray())
+        .andExpect(jsonPath("$.length()").value(1))
+        .andExpect(jsonPath("$[0].id").value(1))
+        .andExpect(jsonPath("$[0].title").value("Spring Boot in Action"))
+        .andExpect(jsonPath("$[0].author").value("Craig Walls"));
+
+    verify(bookService).searchBooksByAuthor(searchAuthor);
+  }
+
+  @Test
+  @DisplayName("GET /api/books/search - Should return 400 when no search parameters provided")
+  void searchBooks_WhenNoSearchParameters_ShouldReturn400() throws Exception {
+    // When & Then
+    mockMvc.perform(get("/api/books/search")).andExpect(status().isBadRequest());
+
+    verify(bookService, never()).searchBooksByTitle(anyString());
+    verify(bookService, never()).searchBooksByAuthor(anyString());
+  }
+
+  @Test
+  @DisplayName("GET /api/books/search - Should return 400 when search parameters are empty")
+  void searchBooks_WhenSearchParametersAreEmpty_ShouldReturn400() throws Exception {
+    // When & Then
+    mockMvc
+        .perform(get("/api/books/search").param("title", "").param("author", ""))
+        .andExpect(status().isBadRequest());
+
+    verify(bookService, never()).searchBooksByTitle(anyString());
+    verify(bookService, never()).searchBooksByAuthor(anyString());
+  }
+
+  @Test
+  @DisplayName("GET /api/books/{id} - Should return 400 when ID is not a number")
+  void getBookById_WhenInvalidIdFormat_ShouldReturn400() throws Exception {
+    // When & Then
+    mockMvc.perform(get("/api/books/{id}", "invalid")).andExpect(status().isBadRequest());
+
+    verify(bookService, never()).getBookById(anyLong());
+  }
+
+  @Test
+  @DisplayName("PUT /api/books/{id} - Should return 400 when ID is not a number")
+  void updateBook_WhenInvalidIdFormat_ShouldReturn400() throws Exception {
+    // Given
+    BookDTO updateBookDTO = new BookDTO(null, "Updated Title", "Updated Author");
+
+    // When & Then
+    mockMvc
+        .perform(
+            put("/api/books/{id}", "invalid")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(updateBookDTO)))
+        .andExpect(status().isBadRequest());
+
+    verify(bookService, never()).updateBook(anyLong(), any(Book.class));
+  }
+
+  @Test
+  @DisplayName("DELETE /api/books/{id} - Should return 400 when ID is not a number")
+  void deleteBook_WhenInvalidIdFormat_ShouldReturn400() throws Exception {
+    // When & Then
+    mockMvc.perform(delete("/api/books/{id}", "invalid")).andExpect(status().isBadRequest());
+
+    verify(bookService, never()).deleteBook(anyLong());
+  }
+}

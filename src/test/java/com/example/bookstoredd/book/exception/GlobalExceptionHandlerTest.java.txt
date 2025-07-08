@@ -1,0 +1,257 @@
+package com.example.bookstoredd.book.exception;
+
+import static org.mockito.Mockito.*;
+
+import com.example.bookstoredd.book.Book;
+import com.example.bookstoredd.book.BookController;
+import com.example.bookstoredd.book.BookService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
+import java.util.Set;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
+
+@WebMvcTest(BookController.class)
+@DisplayName("Global Exception Handler Tests")
+class GlobalExceptionHandlerTest {
+
+  @Autowired private MockMvc mockMvc;
+
+  @MockBean private BookService bookService;
+
+  @Autowired private ObjectMapper objectMapper;
+
+  @BeforeEach
+  void setUp() {
+    // Reset mocks before each test
+    reset(bookService);
+  }
+
+  @Test
+  @DisplayName("Should handle BookNotFoundException with 404 status")
+  void handleBookNotFoundException_ShouldReturn404() throws Exception {
+    // Given
+    Long bookId = 999L;
+    when(bookService.getBookById(bookId)).thenThrow(new BookNotFoundException(bookId));
+
+    // When & Then
+    mockMvc
+        .perform(MockMvcRequestBuilders.get("/api/books/{id}", bookId))
+        .andExpect(MockMvcResultMatchers.status().isNotFound())
+        .andExpect(MockMvcResultMatchers.content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.status").value(404))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.error").value("Not Found"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("Book not found with ID: 999"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.path").value("/api/books/999"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.timestamp").exists());
+  }
+
+  @Test
+  @DisplayName("Should handle BookAlreadyExistsException with 409 status")
+  void handleBookAlreadyExistsException_ShouldReturn409() throws Exception {
+    // Given
+    Long bookId = 1L;
+    Book book = new Book();
+    book.setId(bookId);
+    book.setTitle("Test Book");
+    book.setAuthor("Test Author");
+
+    when(bookService.createBook(any(Book.class))).thenThrow(new BookAlreadyExistsException(bookId));
+
+    String bookJson = objectMapper.writeValueAsString(book);
+
+    // When & Then
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/api/books")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(bookJson))
+        .andExpect(MockMvcResultMatchers.status().isConflict())
+        .andExpect(MockMvcResultMatchers.content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.status").value(409))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.error").value("Conflict"))
+        .andExpect(
+            MockMvcResultMatchers.jsonPath("$.message").value("Book already exists with ID: 1"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.path").value("/api/books"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.timestamp").exists());
+  }
+
+  @Test
+  @DisplayName("Should handle validation errors with 400 status")
+  void handleValidationException_ShouldReturn400() throws Exception {
+    // Given - Create a book with invalid data (empty title and author)
+    String invalidBookJson =
+        """
+        {
+          "title": "",
+          "author": ""
+        }
+        """;
+
+    // When & Then
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.post("/api/books")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(invalidBookJson))
+        .andExpect(MockMvcResultMatchers.status().isBadRequest())
+        .andExpect(MockMvcResultMatchers.content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.status").value(400))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.error").value("Bad Request"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("Validation failed"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.path").value("/api/books"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.timestamp").exists())
+        .andExpect(MockMvcResultMatchers.jsonPath("$.validationErrors").isArray());
+  }
+
+  @Test
+  @DisplayName("Should handle type mismatch with 400 status")
+  void handleTypeMismatchException_ShouldReturn400() throws Exception {
+    // When & Then - Try to access book with invalid ID format
+    mockMvc
+        .perform(MockMvcRequestBuilders.get("/api/books/{id}", "invalid-id"))
+        .andExpect(MockMvcResultMatchers.status().isBadRequest())
+        .andExpect(MockMvcResultMatchers.content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.status").value(400))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.error").value("Bad Request"))
+        .andExpect(
+            MockMvcResultMatchers.jsonPath("$.message")
+                .value("Invalid value 'invalid-id' for parameter 'id'. Expected type: Long"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.path").value("/api/books/invalid-id"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.timestamp").exists());
+  }
+
+  @Test
+  @DisplayName("Should handle IllegalArgumentException with 400 status")
+  void handleIllegalArgumentException_ShouldReturn400() throws Exception {
+    // Given
+    when(bookService.getAllBooks()).thenThrow(new IllegalArgumentException("Invalid argument"));
+
+    // When & Then
+    mockMvc
+        .perform(MockMvcRequestBuilders.get("/api/books"))
+        .andExpect(MockMvcResultMatchers.status().isBadRequest())
+        .andExpect(MockMvcResultMatchers.content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.status").value(400))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.error").value("Bad Request"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("Invalid argument"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.path").value("/api/books"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.timestamp").exists());
+  }
+
+  @Test
+  @DisplayName("Should handle generic exceptions with 500 status")
+  void handleGenericException_ShouldReturn500() throws Exception {
+    // Given
+    when(bookService.getAllBooks()).thenThrow(new RuntimeException("Database connection failed"));
+
+    // When & Then
+    mockMvc
+        .perform(MockMvcRequestBuilders.get("/api/books"))
+        .andExpect(MockMvcResultMatchers.status().isInternalServerError())
+        .andExpect(MockMvcResultMatchers.content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.status").value(500))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.error").value("Internal Server Error"))
+        .andExpect(
+            MockMvcResultMatchers.jsonPath("$.message").value("An unexpected error occurred"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.path").value("/api/books"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.timestamp").exists());
+  }
+
+  @Test
+  @DisplayName("Should handle ConstraintViolationException with 400 status")
+  void handleConstraintViolationException_ShouldReturn400() throws Exception {
+    // Given
+    @SuppressWarnings("unchecked")
+    ConstraintViolation<Object> violation = mock(ConstraintViolation.class);
+    when(violation.getPropertyPath()).thenReturn(mock(jakarta.validation.Path.class));
+    when(violation.getMessage()).thenReturn("must not be null");
+    when(violation.getPropertyPath().toString()).thenReturn("title");
+
+    Set<ConstraintViolation<Object>> violations = Set.of(violation);
+    ConstraintViolationException ex = new ConstraintViolationException(violations);
+
+    when(bookService.getAllBooks()).thenThrow(ex);
+
+    // When & Then
+    mockMvc
+        .perform(MockMvcRequestBuilders.get("/api/books"))
+        .andExpect(MockMvcResultMatchers.status().isBadRequest())
+        .andExpect(MockMvcResultMatchers.content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.status").value(400))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.error").value("Bad Request"))
+        .andExpect(
+            MockMvcResultMatchers.jsonPath("$.message").value("Constraint validation failed"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.path").value("/api/books"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.timestamp").exists())
+        .andExpect(MockMvcResultMatchers.jsonPath("$.validationErrors").isArray());
+  }
+
+  @Test
+  @DisplayName("Should handle search with empty parameters returning 400")
+  void handleEmptySearchParameters_ShouldReturn400() throws Exception {
+    // When & Then
+    mockMvc
+        .perform(MockMvcRequestBuilders.get("/api/books/search"))
+        .andExpect(MockMvcResultMatchers.status().isBadRequest());
+  }
+
+  @Test
+  @DisplayName("Should handle DELETE request for non-existent book")
+  void handleDeleteNonExistentBook_ShouldReturn404() throws Exception {
+    // Given
+    Long bookId = 999L;
+    doThrow(new BookNotFoundException(bookId)).when(bookService).deleteBook(bookId);
+
+    // When & Then
+    mockMvc
+        .perform(MockMvcRequestBuilders.delete("/api/books/{id}", bookId))
+        .andExpect(MockMvcResultMatchers.status().isNotFound())
+        .andExpect(MockMvcResultMatchers.content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.status").value(404))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.error").value("Not Found"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("Book not found with ID: 999"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.path").value("/api/books/999"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.timestamp").exists());
+  }
+
+  @Test
+  @DisplayName("Should handle PUT request for non-existent book")
+  void handleUpdateNonExistentBook_ShouldReturn404() throws Exception {
+    // Given
+    Long bookId = 999L;
+    String bookJson =
+        """
+        {
+          "title": "Updated Title",
+          "author": "Updated Author"
+        }
+        """;
+
+    when(bookService.updateBook(eq(bookId), any(Book.class)))
+        .thenThrow(new BookNotFoundException(bookId));
+
+    // When & Then
+    mockMvc
+        .perform(
+            MockMvcRequestBuilders.put("/api/books/{id}", bookId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(bookJson))
+        .andExpect(MockMvcResultMatchers.status().isNotFound())
+        .andExpect(MockMvcResultMatchers.content().contentType(MediaType.APPLICATION_JSON))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.status").value(404))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.error").value("Not Found"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.message").value("Book not found with ID: 999"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.path").value("/api/books/999"))
+        .andExpect(MockMvcResultMatchers.jsonPath("$.timestamp").exists());
+  }
+}
