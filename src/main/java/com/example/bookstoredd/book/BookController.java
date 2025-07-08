@@ -33,11 +33,6 @@ public class BookController {
 
   private final BookService bookService;
 
-  // Constants for log messages
-  private static final String INVALID_BOOK_ID_MSG = "Invalid book ID: {}";
-  private static final String BOOK_NOT_FOUND_MSG = "Book with ID {} not found";
-  private static final String BOOK_ALREADY_EXISTS_MSG = "Book with ID {} already exists";
-
   @GetMapping
   @Operation(summary = "Get all books", description = "Retrieve a list of all books")
   @ApiResponses(
@@ -66,17 +61,7 @@ public class BookController {
       @PathVariable("id") @Parameter(description = "Book ID", example = "1") Long id) {
     log.info("Retrieving book with ID: {}", id);
 
-    if (id == null || id <= 0) {
-      log.warn(INVALID_BOOK_ID_MSG, id);
-      return ResponseEntity.badRequest().build();
-    }
-
     Book book = bookService.getBookById(id);
-    if (book == null) {
-      log.warn(BOOK_NOT_FOUND_MSG, id);
-      return ResponseEntity.notFound().build();
-    }
-
     log.info("Successfully retrieved book with ID: {}", id);
     return ResponseEntity.ok(BookDTO.fromBook(book));
   }
@@ -92,11 +77,6 @@ public class BookController {
       })
   public ResponseEntity<BookDTO> createBook(@Valid @RequestBody BookDTO bookDTO) {
     log.info("Creating new book with title: {}", bookDTO.title());
-
-    if (bookDTO.id() != null && bookService.getBookById(bookDTO.id()) != null) {
-      log.warn(BOOK_ALREADY_EXISTS_MSG, bookDTO.id());
-      return ResponseEntity.status(HttpStatus.CONFLICT).build();
-    }
 
     Book book = bookDTO.toBook();
     Book savedBook = bookService.createBook(book);
@@ -119,18 +99,8 @@ public class BookController {
       @Valid @RequestBody BookDTO bookDTO) {
     log.info("Updating book with ID: {}", id);
 
-    if (id == null || id <= 0) {
-      log.warn(INVALID_BOOK_ID_MSG, id);
-      return ResponseEntity.badRequest().build();
-    }
-
     Book book = bookDTO.toBook();
     Book updatedBook = bookService.updateBook(id, book);
-
-    if (updatedBook == null) {
-      log.warn("Book with ID {} not found for update", id);
-      return ResponseEntity.notFound().build();
-    }
 
     log.info("Successfully updated book with ID: {}", id);
     return ResponseEntity.ok(BookDTO.fromBook(updatedBook));
@@ -148,17 +118,6 @@ public class BookController {
   public ResponseEntity<Void> deleteBookById(
       @PathVariable("id") @Parameter(description = "Book ID", example = "1") Long id) {
     log.info("Deleting book with ID: {}", id);
-
-    if (id == null || id <= 0) {
-      log.warn(INVALID_BOOK_ID_MSG, id);
-      return ResponseEntity.badRequest().build();
-    }
-
-    Book existingBook = bookService.getBookById(id);
-    if (existingBook == null) {
-      log.warn("Book with ID {} not found for deletion", id);
-      return ResponseEntity.notFound().build();
-    }
 
     bookService.deleteBook(id);
     log.info("Successfully deleted book with ID: {}", id);

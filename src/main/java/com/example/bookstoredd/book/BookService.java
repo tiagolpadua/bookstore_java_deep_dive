@@ -1,87 +1,118 @@
 package com.example.bookstoredd.book;
 
-import java.sql.ResultSet;
+import com.example.bookstoredd.book.exception.BookAlreadyExistsException;
+import com.example.bookstoredd.book.exception.BookNotFoundException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Transactional
 public class BookService {
 
-  private final JdbcTemplate jdbcTemplate;
+  private final BookRepository bookRepository;
 
-  private static final RowMapper<Book> bookRowMapper =
-      (ResultSet rs, int rowNum) -> {
-        Book book = new Book();
-        book.setId(rs.getLong("id"));
-        book.setTitle(rs.getString("title"));
-        book.setAuthor(rs.getString("author"));
-        return book;
-      };
+  // Constants for log messages
+  private static final String BOOK_CREATED_MSG = "Book created successfully: {}";
+  private static final String BOOK_UPDATED_MSG = "Book updated successfully: {}";
+  private static final String BOOK_DELETED_MSG = "Book deleted successfully with ID: {}";
+  private static final String BOOK_NOT_FOUND_MSG = "Book not found with ID: {}";
+  private static final String BOOKS_RETRIEVED_MSG = "Retrieved {} books";
+  private static final String SEARCH_BOOKS_BY_TITLE_MSG = "Searching books by title: {}";
+  private static final String SEARCH_BOOKS_BY_AUTHOR_MSG = "Searching books by author: {}";
 
+  @Transactional(readOnly = true)
   public List<Book> getAllBooks() {
-    String sql = "SELECT id, title, author FROM book ORDER BY id";
-    return jdbcTemplate.query(sql, bookRowMapper);
+    log.debug("Retrieving all books");
+    List<Book> books = bookRepository.findAllOrderedById();
+    log.info(BOOKS_RETRIEVED_MSG, books.size());
+    return books;
   }
 
+  @Transactional(readOnly = true)
   public Book getBookById(Long id) {
-    String sql = "SELECT id, title, author FROM book WHERE id = ?";
-    List<Book> books = jdbcTemplate.query(sql, bookRowMapper, id);
-    return books.isEmpty() ? null : books.get(0);
+    log.debug("Retrieving book with ID: {}", id);
+    return bookRepository
+        .findById(id)
+        .orElseThrow(
+            () -> {
+              log.warn(BOOK_NOT_FOUND_MSG, id);
+              return new BookNotFoundException(id);
+            });
   }
 
   public Book createBook(Book book) {
-    return save(book);
+    log.debug("Creating new book: {}", book.getTitle());
+
+    // Verificar se o livro já existe por ID
+    if (book.getId() != null && bookRepository.existsById(book.getId())) {
+      log.warn("Book with ID {} already exists", book.getId());
+      throw new BookAlreadyExistsException(book.getId());
+    }
+
+    Book savedBook = bookRepository.save(book);
+    log.info(BOOK_CREATED_MSG, savedBook.getTitle());
+    return savedBook;
   }
 
   public Book updateBook(Long id, Book book) {
-    Book existingBook = getBookById(id);
-    if (existingBook != null) {
-      existingBook.setTitle(book.getTitle().trim());
-      existingBook.setAuthor(book.getAuthor().trim());
-      return save(existingBook);
-    }
-    return null;
+    log.debug("Updating book with ID: {}", id);
+    Book existingBook =
+        bookRepository
+            .findById(id)
+            .orElseThrow(
+                () -> {
+                  log.warn(BOOK_NOT_FOUND_MSG, id);
+                  return new BookNotFoundException(id);
+                });
+
+    existingBook.setTitle(book.getTitle().trim());
+    existingBook.setAuthor(book.getAuthor().trim());
+
+    Book updatedBook = bookRepository.save(existingBook);
+    log.info(BOOK_UPDATED_MSG, updatedBook.getTitle());
+    return updatedBook;
   }
 
   public void deleteBook(Long id) {
-    String sql = "DELETE FROM book WHERE id = ?";
-    jdbcTemplate.update(sql, id);
+    log.debug("Deleting book with ID: {}", id);
+    if (!bookRepository.existsById(id)) {
+      log.warn(BOOK_NOT_FOUND_MSG, id);
+      throw new BookNotFoundException(id);
+    }
+    bookRepository.deleteById(id);
+    log.info(BOOK_DELETED_MSG, id);
   }
 
   public void deleteAllBooks() {
-    String sql = "DELETE FROM book";
-    jdbcTemplate.update(sql);
+    log.debug("Deleting all books");
+    long count = bookRepository.count();
+    bookRepository.deleteAll();
+    log.info("Deleted {} books", count);
   }
 
+  @Transactional(readOnly = true)
   public List<Book> searchBooksByTitle(String title) {
-    String sql =
-        "SELECT id, title, author FROM book WHERE LOWER(title) LIKE LOWER(\'%"
-            + title
-            + "%\') ORDER BY id";
-    return jdbcTemplate.query(sql, bookRowMapper);
+    log.debug(SEARCH_BOOKS_BY_TITLE_MSG, title);
+    List<Book> books = bookRepository.findByTitleContainingIgnoreCase(title);
+    log.info("Found {} books with title containing: {}", books.size(), title);
+    return books;
   }
 
+  @Transactional(readOnly = true)
   public List<Book> searchBooksByAuthor(String author) {
-    String sql = "SELECT id, title, author FROM book WHERE LOWER(author) LIKE LOWER(?) ORDER BY id";
-    return jdbcTemplate.query(sql, bookRowMapper, "%" + author + "%");
+    log.debug(SEARCH_BOOKS_BY_AUTHOR_MSG, author);
+    List<Book> books = bookRepository.findByAuthorContainingIgnoreCase(author);
+    log.info("Found {} books with author containing: {}", books.size(), author);
+    return books;
   }
 
-  private Book save(Book book) {
-    if (getBookById(book.getId()) == null) {
-      log.info("inserindo novo livro: {}", book.getTitle());
-      String sql = "INSERT INTO book (id, title, author) VALUES (?, ?, ?)";
-      jdbcTemplate.update(sql, book.getId(), book.getTitle(), book.getAuthor());
-    } else {
-      log.info("atualizando livro: {}", book.getTitle());
-      String sql = "UPDATE book SET title = ?, author = ? WHERE id = ?";
-      jdbcTemplate.update(sql, book.getTitle(), book.getAuthor(), book.getId());
-    }
-    return book;
+  @Transactional(readOnly = true)
+  public boolean existsById(Long id) {
+    return bookRepository.existsById(id);
   }
 }
