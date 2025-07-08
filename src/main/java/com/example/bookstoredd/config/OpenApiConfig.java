@@ -7,13 +7,14 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class OpenApiConfig {
-  
+
   @Bean
   public OpenAPI customOpenAPI() {
     return new OpenAPI()
-        .info(new Info()
-            .title("Bookstore API")
-            .version("1.0")
-            .description("A simple bookstore API with Spring Boot and Spring Data JDBC"));
+        .info(
+            new Info()
+                .title("Bookstore API")
+                .version("1.0")
+                .description("A simple bookstore API with Spring Boot and Spring Data JDBC"));
   }
 }
