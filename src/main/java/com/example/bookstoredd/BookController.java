@@ -1,5 +1,10 @@
 package com.example.bookstoredd;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.sql.ResultSet;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 @CrossOrigin(origins = "*")
 @Slf4j
 @RequiredArgsConstructor
+@Tag(name = "Books", description = "API for managing books")
 public class BookController {
 
   private final JdbcTemplate jdbcTemplate;
@@ -39,6 +45,10 @@ public class BookController {
 
   // http://localhost:8080/api/books
   @GetMapping
+  @Operation(summary = "Get all books", description = "Retrieve a list of all books")
+  @ApiResponses(value = {
+      @ApiResponse(responseCode = "200", description = "Successfully retrieved list of books")
+  })
   public ResponseEntity<List<Book>> getAllBooks() {
     String sql = "SELECT id, title, author FROM book ORDER BY id";
     List<Book> books = jdbcTemplate.query(sql, bookRowMapper);
