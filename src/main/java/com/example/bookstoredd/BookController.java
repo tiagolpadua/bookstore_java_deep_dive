@@ -108,9 +108,8 @@ public class BookController {
         List<Book> books;
 
         if (title != null && !title.trim().isEmpty()) {
-            String sql = "SELECT id, title, author FROM book WHERE LOWER(title) LIKE LOWER(\'%" + title
-                    + "%\') ORDER BY id";
-            books = jdbcTemplate.query(sql, bookRowMapper);
+            String sql = "SELECT id, title, author FROM book WHERE LOWER(title) LIKE LOWER(?) ORDER BY id";
+            books = jdbcTemplate.query(sql, bookRowMapper, "%" + title + "%");
         } else if (author != null && !author.trim().isEmpty()) {
             String sql = "SELECT id, title, author FROM book WHERE LOWER(author) LIKE LOWER(?) ORDER BY id";
             books = jdbcTemplate.query(sql, bookRowMapper, "%" + author + "%");
