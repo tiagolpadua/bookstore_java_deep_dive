@@ -22,9 +22,8 @@ The application follows a simple architecture without traditional layers (no ser
 
 - The controller uses raw JDBC with JdbcTemplate directly (no abstraction layer)
 - The `save()` method in BookController handles both insert and update based on whether the book exists
-- SQL queries are written inline within the controller methods
+- SQL queries are written inline within the controller methods using parameterized queries to prevent SQL injection
 - A custom RowMapper is defined as a static field for mapping ResultSet to Book objects
-- **SQL Injection Vulnerability**: The search endpoint at line 111-112 in BookController concatenates the title parameter directly into SQL, creating a security vulnerability. The author parameter correctly uses parameterized queries.
 
 ## Common Commands
 
